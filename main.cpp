@@ -29,8 +29,8 @@ double phi_inc = 0.07;
 void debugPlot();
 void populateFrameBuffer(std::tuple<char, double>** FrameBuffer);
 void clearFrameBuffer(std::tuple<char, double>** FrameBuffer);
-double* projectPoint(double* origPoint, double K);
-double* computePoint(double R1, double R2, double theta, double phi, double z0);
+void projectPoint(pPoint* pointStruct, double K);
+void computePoint(double R1, double R2, double theta, double phi, double z0, pPoint* pointStruct);
 double** makeXRotMat(double phi);
 double** makeYRotMat(double phi);
 double** makeZRotMat(double phi);
@@ -59,13 +59,15 @@ int main(int argc, char *argv[])
 
 void debugPlot()
 {
+  pPoint* pointStruct = new pPoint;
   double theta_curr = 0;
   double rotations[8] = {0, M_PI_4, M_PI_2, 3*M_PI_4, M_PI, M_PI+M_PI_4, M_PI+M_PI_2, M_PI+3*M_PI_4};
   for(int i = 0; i < 8; i++)
   {
     while(theta_curr < 2*M_PI)
     {
-      double* point = computePoint(R1, R2, theta_curr, rotations[i], z0);
+      computePoint(R1, R2, theta_curr, rotations[i], z0, pointStruct);
+      double* point = pointStruct->origPoint;
       std::cout << '(' << point[0] << ',' << point[1] << ',' << point[2] << ')' << std::endl;
       theta_curr += theta_inc;
     }
@@ -75,6 +77,7 @@ void debugPlot()
 
 void populateFrameBuffer(std::tuple<char, double>** FrameBuffer)
 {
+  pPoint* pointStruct = new pPoint;
   double theta_curr = 0; 
   double phi_curr = 0;
   while(phi_curr < 2*M_PI)
@@ -82,13 +85,12 @@ void populateFrameBuffer(std::tuple<char, double>** FrameBuffer)
     theta_curr = 0;
     while (theta_curr < 2*M_PI)
     {
-      double* orig_point = computePoint(R1, R2, theta_curr, phi_curr, z0);
-      double* proj_point = projectPoint(orig_point, K);
-      double* p_point = computePoint(R1, R2, theta_curr, M_PI, z0);
+      computePoint(R1, R2, theta_curr, phi_curr, z0, pointStruct);
+      projectPoint(pointStruct, K);
       //std::cout << '(' << orig_point[0] << ',' << orig_point[1] << ',' << orig_point[2] << ')' << std::endl;
       //std::cout << '(' << proj_point[0] << ',' << proj_point[1] << ',' << '0' << ')' << std::endl;
-      int x_cord = (screenWidth/2) + ((int) proj_point[0]);
-      int y_cord = (screenHeight/2) + ((int) proj_point[1]);
+      int x_cord = (screenWidth/2) + ((int) ((pointStruct->projPoint)[0]));
+      int y_cord = (screenHeight/2) + ((int) ((pointStruct->projPoint)[1]));
       if(x_cord < 0 || x_cord >= screenWidth || y_cord < 0 || y_cord >= screenHeight)
       {
         theta_curr += theta_inc;
@@ -96,9 +98,9 @@ void populateFrameBuffer(std::tuple<char, double>** FrameBuffer)
       }
       std::tuple<char,double> curr_buff = FrameBuffer[x_cord][y_cord];
       double z_buff = std::get<double>(curr_buff);
-      if (z_buff == 0 || (proj_point[2] < z_buff))
+      if (z_buff == 0 || (((pointStruct->projPoint)[2]) < z_buff))
       {
-        FrameBuffer[x_cord][y_cord] = std::make_tuple('@', proj_point[2]);
+        FrameBuffer[x_cord][y_cord] = std::make_tuple('@', ((pointStruct->projPoint)[2]));
       }
       theta_curr += theta_inc;
     }
@@ -117,33 +119,40 @@ void clearFrameBuffer(std::tuple<char, double>** FrameBuffer)
   }
 }
 
-double* projectPoint(double* origPoint, double K)
+void projectPoint(pPoint* pointStruct, double K)
 {
-  double z_inv = 1/origPoint[2];
-  double x_prime = K*z_inv*origPoint[0];
-  double y_prime = K*z_inv*origPoint[1];
-  double* p_point = new double[3];
-  p_point[0] = x_prime;
-  p_point[1] = y_prime;
-  p_point[2] = origPoint[2];
-  return p_point;
+  double z_inv = 1/((pointStruct->origPoint)[2]);
+  double x_prime = K*z_inv*((pointStruct->origPoint)[0]);
+  double y_prime = K*z_inv*((pointStruct->origPoint)[1]);
+  double* pPoint = new double[3];
+  pPoint[0] = x_prime;
+  pPoint[1] = y_prime;
+  pPoint[2] = ((pointStruct->origPoint)[2]);
+  pointStruct->projPoint = pPoint;
 }
 
-double* computePoint(double R1, double R2, double theta, double phi, double z0)
+void computePoint(double R1, double R2, double theta, double phi, double z0, pPoint* pointStruct)
 {
-  double *projPoint, *origPoint;
+  double *projPoint, *origPoint, *lumPointOrig, *lumPointProj;
   double** rotMat = makeZRotMat(phi);
   origPoint = new double[3];
   origPoint[0] = R1 + R2*cos(theta);
   origPoint[1] = 0;
   origPoint[2] = z0+R2*sin(theta);
+  lumPointOrig = new double[3];
+  lumPointOrig[0] = cos(theta);
+  lumPointOrig[1] = 0;
+  lumPointOrig[2] = sin(theta);
   projPoint = squareMatVec(rotMat, origPoint, 3);
+  lumPointProj = squareMatVec(rotMat, lumPointOrig, 3);
   delete origPoint;
   delete rotMat[0];
   delete rotMat[1];
   delete rotMat[2];
   delete rotMat;
-  return projPoint;
+  delete lumPointOrig;
+  pointStruct->origPoint = projPoint;
+  pointStruct->lumVec = lumPointProj;
 }
 
 double** makeXRotMat(double phi)
